@@ -1,0 +1,15 @@
+{
+  "name": "pos-system",
+  "version": "1.0.0",
+  "description": "Offline-first POS System — monorepo root",
+  "private": true,
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "db:generate": "cd backend && npm run db:generate",
+    "db:migrate": "cd backend && npm run db:migrate",
+    "db:seed": "cd backend && npm run db:seed",
+    "build:frontend": "cd frontend && npm run build"
+  }
+}
