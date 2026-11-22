@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuthStore, useSyncStore } from './store/syncStore';
-import { startAutoSync, initialDataSync, updatePendingCount } from './services/syncEngine';
+import { startAutoSync, stopAutoSync, initialDataSync, updatePendingCount } from './services/syncEngine';
 
 // Layouts
 import AppLayout from './components/ui/AppLayout';
@@ -52,6 +52,8 @@ export default function App() {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      // Stop scheduled/background sync as soon as the authenticated session ends.
+      stopAutoSync();
     };
   }, [isAuthenticated]);
 

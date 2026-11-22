@@ -4,7 +4,6 @@ import toast from 'react-hot-toast';
 import { Eye, EyeOff, ShoppingCart, Wifi, WifiOff } from 'lucide-react';
 import { authAPI } from '../services/api';
 import { useAuthStore, useSyncStore } from '../store/syncStore';
-import { initialDataSync, startAutoSync } from '../services/syncEngine';
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -23,8 +22,6 @@ export default function LoginPage() {
     try {
       const { data } = await authAPI.login(form.email, form.password);
       setAuth(data.data);
-      await initialDataSync();
-      startAutoSync();
       toast.success(`Welcome, ${data.data.user.firstName}!`);
       navigate('/pos');
     } catch (err) {

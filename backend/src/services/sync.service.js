@@ -199,10 +199,17 @@ const getSyncStatus = async (branchId, since) => {
 const getServerDelta = async (branchId, since) => {
   const sinceDate = since ? new Date(since) : new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [products, sales, inventory] = await Promise.all([
+  const [products, categories, sales, inventory] = await Promise.all([
     prisma.product.findMany({
       where: { branchId, updatedAt: { gte: sinceDate } },
       include: { category: true },
+    }),
+    // Categories are shared across branches in this schema. The frontend
+    // expects them in the delta response so newly added categories reach
+    // the local IndexedDB cache during synchronization.
+    prisma.category.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
     }),
     prisma.sale.findMany({
       where: { branchId, updatedAt: { gte: sinceDate } },
@@ -213,7 +220,7 @@ const getServerDelta = async (branchId, since) => {
     }),
   ]);
 
-  return { products, sales, inventory, serverTime: new Date().toISOString() };
+  return { products, categories, sales, inventory, serverTime: new Date().toISOString() };
 };
 
 module.exports = { processSyncBatch, getSyncStatus, getServerDelta };

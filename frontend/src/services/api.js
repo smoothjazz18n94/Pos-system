@@ -8,65 +8,100 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor — inject JWT
+// Attach the latest access token to every protected request.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
 
   const branchId = localStorage.getItem('branchId');
-  if (branchId) config.headers['X-Branch-ID'] = branchId;
+  if (branchId) {
+    config.headers = config.headers || {};
+    config.headers['X-Branch-ID'] = branchId;
+  }
 
   const deviceId = localStorage.getItem('deviceId');
-  if (deviceId) config.headers['X-Client-ID'] = deviceId;
+  if (deviceId) {
+    config.headers = config.headers || {};
+    config.headers['X-Client-ID'] = deviceId;
+  }
 
   return config;
 });
 
-// Response interceptor — auto-refresh token
-let isRefreshing = false;
-let refreshSubscribers = [];
+// All requests that expire at the same time share one refresh request.
+let refreshPromise = null;
 
-const subscribeTokenRefresh = (cb) => refreshSubscribers.push(cb);
-const onRefreshed = (token) => { refreshSubscribers.forEach(cb => cb(token)); refreshSubscribers = []; };
+const isAuthEndpoint = (url = '') =>
+  /\/auth\/(login|refresh|logout)(?:[/?]|$)/.test(url);
+
+const endLocalSession = () => {
+  // Remove authentication state only. Do NOT clear localStorage wholesale:
+  // device metadata and other POS state must be preserved.
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('pos-auth');
+  window.location.href = '/login';
+};
+
+const refreshTokens = async () => {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) {
+    throw new Error('No refresh token is available. Please sign in again.');
+  }
+
+  const response = await axios.post(
+    `${API_BASE}/auth/refresh`,
+    { refreshToken },
+    { timeout: 15000, headers: { 'Content-Type': 'application/json' } }
+  );
+
+  const tokens = response.data?.data;
+  if (!tokens?.accessToken || !tokens?.refreshToken) {
+    throw new Error('The server returned an invalid token refresh response.');
+  }
+
+  localStorage.setItem('accessToken', tokens.accessToken);
+  localStorage.setItem('refreshToken', tokens.refreshToken);
+  return tokens.accessToken;
+};
 
 api.interceptors.response.use(
-  (res) => res,
+  (response) => response,
   async (error) => {
     const original = error.config;
+    if (
+      error.response?.status !== 401 ||
+      !original ||
+      original._retry ||
+      isAuthEndpoint(original.url)
+    ) {
+      return Promise.reject(error);
+    }
 
-    if (error.response?.status === 401 && !original._retry && error.response?.data?.code === 'TOKEN_EXPIRED') {
-      if (isRefreshing) {
-        return new Promise((resolve) => {
-          subscribeTokenRefresh((token) => {
-            original.headers.Authorization = `Bearer ${token}`;
-            resolve(api(original));
-          });
+    // A missing, expired, or otherwise rejected access token can be renewed
+    // if the refresh token is still valid.
+    original._retry = true;
+
+    try {
+      if (!refreshPromise) {
+        refreshPromise = refreshTokens().catch((refreshError) => {
+          endLocalSession();
+          throw refreshError;
+        }).finally(() => {
+          refreshPromise = null;
         });
       }
 
-      original._retry = true;
-      isRefreshing = true;
-
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) throw new Error('No refresh token');
-
-        const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
-        localStorage.setItem('accessToken', data.data.accessToken);
-        localStorage.setItem('refreshToken', data.data.refreshToken);
-        onRefreshed(data.data.accessToken);
-        original.headers.Authorization = `Bearer ${data.data.accessToken}`;
-        return api(original);
-      } catch (refreshError) {
-        localStorage.clear();
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
+      const newAccessToken = await refreshPromise;
+      original.headers = original.headers || {};
+      original.headers.Authorization = `Bearer ${newAccessToken}`;
+      return api(original);
+    } catch (refreshError) {
+      return Promise.reject(refreshError);
     }
-
-    return Promise.reject(error);
   }
 );
 

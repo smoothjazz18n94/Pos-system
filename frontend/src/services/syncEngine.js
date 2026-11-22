@@ -12,6 +12,7 @@ const SYNC_INTERVAL = 30 * 1000; // 30s
 const BATCH_SIZE = 50;
 let syncTimer = null;
 let isSyncing = false;
+let onlineSyncHandler = null;
 
 // Initialise device ID (persisted per device)
 export const getDeviceId = () => {
@@ -159,23 +160,26 @@ export const startAutoSync = () => {
     syncTimer = setTimeout(runSync, SYNC_INTERVAL);
   };
 
-  // Sync on network restore
-  window.addEventListener('online', () => {
+  // Keep exactly one network-restored listener for the authenticated session.
+  onlineSyncHandler = () => {
     console.log('[Sync] Back online — syncing now');
     sync();
-  });
+  };
+  window.addEventListener('online', onlineSyncHandler);
 
-  // Start loop
-  if (isOnline()) {
-    runSync();
-  } else {
-    // Wait for online
-    window.addEventListener('online', runSync, { once: true });
-  }
+  // The loop also schedules the next attempt when currently offline.
+  runSync();
 };
 
 export const stopAutoSync = () => {
-  if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
+  if (syncTimer) {
+    clearTimeout(syncTimer);
+    syncTimer = null;
+  }
+  if (onlineSyncHandler) {
+    window.removeEventListener('online', onlineSyncHandler);
+    onlineSyncHandler = null;
+  }
 };
 
 // ── Pending count helper ─────────────────────────────────────────────────────
