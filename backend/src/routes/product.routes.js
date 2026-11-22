@@ -82,11 +82,32 @@ router.post('/',
   ],
   async (req, res, next) => {
     try {
-      const { initialQuantity, lowStockAlert, ...productData } = req.body;
-      const branchId = productData.branchId || req.user.branchId;
+    const { initialQuantity, lowStockAlert, ...productData } = req.body;
 
-      const product = await prisma.$transaction(async (tx) => {
-        const p = await tx.product.create({
+// Normalize empty optional fields for Prisma
+    const optionalFields = [
+  'description',
+  'sku',
+  'barcode',
+  'categoryId',
+  'imageUrl',
+];
+
+for (const field of optionalFields) {
+  if (productData[field] === '') {
+    productData[field] = null;
+  }
+}
+
+// costPrice is an optional Decimal field
+if (productData.costPrice === '') {
+  productData.costPrice = null;
+}
+
+    const branchId = productData.branchId || req.user.branchId;hId = productData.branchId || req.user.branchId;
+
+    const product = await prisma.$transaction(async (tx) => {
+    const p = await tx.product.create({
           data: { ...productData, branchId },
           include: { category: true },
         });
